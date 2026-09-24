@@ -1,0 +1,8 @@
+# 印象笔记 MCP 连接器 + 备份脚本 依赖
+# 安装：python3 -m venv .venv && .venv/bin/activate && pip install -r requirements.txt
+# （Windows 用 .venv\Scripts\activate）
+mcp<2
+zibuyu_evernote
+html2text
+markdown
+bleach
