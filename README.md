@@ -101,9 +101,9 @@ pip install -r requirements.txt
 
 ---
 
-## 第五步：在 WorkBuddy 里连接（关键按钮）
+## 第五步：在 WorkBuddy/Trae 里连接（关键按钮）
 
-1. 保存好 `mcp.json` 后，**重启 WorkBuddy**。
+1. 保存好 `mcp.json` 后，**重启 WorkBuddy/Trae**。
 2. 打开**连接器管理**页面。
 3. 点击页面**右上角的「自定义连接器」**。
 4. 在列表里找到 **`yinxiang`**，点 **信任 / 启用**。
