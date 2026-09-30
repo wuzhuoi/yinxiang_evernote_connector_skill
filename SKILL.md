@@ -22,6 +22,23 @@ agent_created: true
 
 ---
 
+## ⚠️ Token 有效期与续期（重要，2026-09-30 补）
+- **Developer Token（从 DeveloperToken.action 获取）是短期凭证**：印象笔记（国内版）页面显示其有效期约 **7 天**，且只在生成时显示一次、需手动 Revoke 后重发。自动化的 Developer Token 会每 ~7 天失效（`EDAMUserException errorCode=9`），无法无人值守续期。
+- **OAuth Access Token（官方推荐用于生产）**：默认有效期 **1 年**（`edam_expires` 字段携带过期时间；授权时可被用户调成 1 天/1 周/1 月，**务必保留默认 1 年**）。印象笔记官方明确：应用投入实际使用时用户应通过 OAuth 认证，Developer Token 仅用于开发期联调。
+- **切换成本极低**：底层 `zibuyu_evernote` EDAM SDK 接受任意 `S=` 开头 token，Developer Token 与 OAuth Access Token 共用同一个 `mcpServers.yinxiang.env.EVERNOTE_TOKEN` 字段。因此"治本"做法 = 注册 API Key（Consumer Key/Secret）→ 跑一次 OAuth 1.0a 拿到 1 年有效 token → 同字段替换，**连接器代码无需改动**。
+- **治标方案（不想注册 API Key 时）**：保留 Developer Token，但设每 ~6 天的人/半自动续期（Playwright 登录点击生成并抓取一次性 token，或定时提醒人工替换）。
+- 健壮性建议：无论哪种 token，运行前都先做最小连通性测试（如 `yinxiang_list_notebooks`），失败时 fail-soft 通知并终止，不要盲目重试上传。
+
+### skills-oauth 正确获取方式（实测 2026-09-30，关键）
+- 打开 `https://app.yinxiang.com/third/skills-oauth/`（需登录 + **付费会员**：仅对 PLUS/PREMIUM/PRO/SUPER_VIP 开放，免费账户会弹"仅对会员开放"升级提示）。
+- 页面真正的按钮是 **`#generate-token-btn`**（文字「生成新 Token」，onclick=`authorizeWithMembershipCheck('yinxiang-ai-skill')`）。点击 → 校验会员 → 跳 `/third/skills-oauth/auth/yinxiang-ai-skill` 生成 token → 带 `?token=...` 跳回并显示在 **`#token-code`** 元素（含「复制」按钮）。**不要点页面里其它「授权」链接**——那会跳到授权管理页、拿不到 token。
+- 返回的 token 形如 `S=s45:U=...:A=yinxiang-skill:V=2:H=...`，是经 `/third/mcp-oauth/callback` 换发的**正式 OAuth access token，有效期约 1 年**（实测 `E−C ≈ 365 天`），彻底解决 Developer Token 7 天失效问题。
+- 自动化抓取要点：用浏览器驱动登录态 → 点 `#generate-token-btn` → **扫描整页内容**（`page.content()`，含 `urllib.parse.unquote` 解码后）匹配 `S=s\d+:U=...` 提取 token。切勿只查 `#token-code`（回调页上该元素可能不存在，会漏抓），也切勿抓 `text=授权` 等其它元素。
+- 复用脚本：**`yinxiang_oauth_token.py`**（可选组件，需 `pip install playwright`）。`python yinxiang_oauth_token.py --profile <独立档案目录>` 会开可见浏览器、等你登录、点按钮、抓 token；加 `--write` 直接写进 mcp.json；手动复制到的 token 可用 `--token 'S=...' --write` 回写。抓不到时保留截图 `oauth_debug.png` 供人工兜底。
+
+### ⚠️ 备份脚本同名跳过碰撞（已知坑）
+- `yinxiang_backup.py` 对附件/图片批次用**通用标题**（如 `文件备份 - pdf（2个）`）。若目标笔记本已存在同标题旧笔记，脚本会误判「已存在」而**跳过，实际未上传**（静默成功！）。若工作区新增文件但笔记本里查不到，应改用**唯一标题（文件相对路径含扩展名）**强制建笔记，不要依赖默认跳过逻辑。验证应以 API 查标题+附件数（非脚本"跳过"报喜）为准。
+
 ## ⚠️ 首次接入引导（必须按顺序执行）
 
 **接入前，第一件事是先问用户账户级别**——它直接决定单条笔记体积上限与分批策略，选错会导致上传失败。
@@ -133,5 +150,6 @@ Token 解析顺序：环境变量 `EVERNOTE_TOKEN` → `~/.workbuddy/mcp.json` �
 - `server.py` — MCP server，4 个工具（检索 + 回写）。
 - `yinxiang_backup.py` — 批量备份脚本（跨平台、路径可配、账户级别自适应、附件 en-media 引用已修复）。
 - `yinxiang_md.py` — 笔记格式构造（原生 Markdown 笔记 / 超级笔记 + ENML 属性白名单归一化）。
-- `requirements.txt` — 依赖（`mcp<2` / `zibuyu_evernote` / `html2text` / `markdown` / `bleach`）。
+- `yinxiang_oauth_token.py` — **可选组件**：浏览器自动化获取 1 年 OAuth token（Playwright；`--profile` 登录态持久化、`--write` 写回 mcp.json、`--token` 手动回写、失败留 `oauth_debug.png` 兜底）。详见上方「skills-oauth 正确获取方式」。
+- `requirements.txt` — 主依赖（`mcp<2` / `zibuyu_evernote` / `html2text` / `markdown` / `bleach`）；`yinxiang_oauth_token.py` 的 `playwright` 为可选，单独安装。
 - `README.md` — 面向用户的完整安装指南（账户级别 / API Key / 配置位置 / 自定义连接器 / Trae）。

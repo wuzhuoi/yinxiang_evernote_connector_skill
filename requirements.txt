@@ -6,3 +6,7 @@ zibuyu_evernote
 html2text
 markdown
 bleach
+
+# 可选组件 yinxiang_oauth_token.py 需要（独立安装，不计入主依赖）：
+#   pip install playwright && playwright install chromium
+# 不装也能用本技能；只有需要浏览器自动化拿 1 年 OAuth token 时才装。

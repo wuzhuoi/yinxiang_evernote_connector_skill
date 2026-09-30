@@ -219,6 +219,20 @@ def make_batches(items, budget=PER_NOTE_BUDGET):
     return batches
 
 
+def names_suffix(batch, limit=100):
+    """批次内文件名（排序后拼接）作为标题尾缀。
+
+    目的：让附件/图片批次笔记的标题**唯一且对同一批文件稳定**——
+    只用「文件备份 - pdf（2个）」这类通用标题会与历史旧笔记撞名，
+    导致脚本误判「已存在」而静默跳过，文件实际并未上传。
+    同一批文件 → 同一标题 → 幂等跳过仍然有效。
+    """
+    names = "、".join(sorted(os.path.basename(p) for p, _ in batch))
+    if len(names) > limit:
+        names = names[:limit] + "…"
+    return names
+
+
 def get_existing_titles(client, nb_guid):
     from zibuyu_evernote.edam.notestore.ttypes import NoteFilter, NotesMetadataResultSpec
     nf = NoteFilter()
@@ -392,7 +406,8 @@ def main():
                 resources.append(r)
                 body += f'<div><en-media type="{r.mime}" hash="{binascii.hexlify(h).decode()}"/></div>'
             body += ENML_TAIL
-            title = f"图片备份（第{i}批，共{len(img_batches)}批）" if len(img_batches) > 1 else f"图片备份（全部{len(batch)}张）"
+            base = f"图片备份（第{i}批/共{len(img_batches)}批，{len(batch)}张）" if len(img_batches) > 1 else f"图片备份（{len(batch)}张）"
+            title = f"{base}｜{names_suffix(batch)}"[:200]
             note = Note()
             note.title = title
             note.content = body
@@ -419,7 +434,8 @@ def main():
                     # 关键：必须用 en-media 引用资源，否则 Evernote 不显示（孤儿资源被隐藏）
                     body += f'<li><en-media type="{r.mime}" hash="{hexh}"/> {fn}</li>'
                 body += "</ul>" + ENML_TAIL
-                title = f"文件备份 - {ext}（第{i}批，共{len(other_batches[ext])}批）" if len(other_batches[ext]) > 1 else f"文件备份 - {ext}（{len(batch)}个）"
+                base = f"文件备份 - {ext}（第{i}批/共{len(other_batches[ext])}批，{len(batch)}个）" if len(other_batches[ext]) > 1 else f"文件备份 - {ext}（{len(batch)}个）"
+                title = f"{base}｜{names_suffix(batch)}"[:200]
                 note = Note()
                 note.title = title
                 note.content = body
