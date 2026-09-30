@@ -1,6 +1,13 @@
 ---
 name: yinxiang-connector
+display_name: '印象笔记连接器（备份同步）'
+display_name_en: 'Yinxiang (Evernote CN) Connector & Backup'
 description: 印象笔记（Yinxiang / Evernote 国内版）连接器与备份同步能力包。提供 MCP 连接器（检索笔记 + 把 Markdown 回写为「原生 Markdown 笔记」，客户端可切换源码/预览）以及把任意文件夹批量备份到印象笔记的脚本：.md 独立成篇存为原生 Markdown 笔记，其他文件按扩展名分组以附件形式贴在「超级笔记」里，图片合并为一条内联笔记。当用户提到"存到印象笔记 / 从印象笔记读取 / 搜索我的印象笔记 / 备份文件夹到印象笔记 / 把笔记同步到印象笔记 / 在 WorkBuddy 或 Trae 里接入印象笔记"时使用。跨平台（Windows / macOS）、跨客户端（WorkBuddy / Trae / 任意支持 stdio MCP 的客户端）。
+description_zh: '把印象笔记（国内版）接入 AI 客户端：检索笔记、将产出回写为可切换源码视图的原生 Markdown 笔记，并支持把任意文件夹批量备份到印象笔记（附件 / 图片 / 各类文档）。'
+description_en: 'Connect Yinxiang (Evernote China) to your AI client — search notes, write outputs back as native Markdown notes with a source-code view, and batch-backup any folder into Yinxiang as attachments or inline images.'
+category: 效率工具
+version: 1.0.0
+author: DeepBlueSea
 agent_created: true
 ---
 
