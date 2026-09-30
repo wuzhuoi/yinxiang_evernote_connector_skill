@@ -29,6 +29,7 @@ import time
 import hashlib
 import binascii
 import argparse
+import re
 from xml.sax.saxutils import escape as xescape
 from html.parser import HTMLParser
 import markdown
@@ -203,6 +204,23 @@ def build_resource(file_path, as_attachment=True):
     r.attributes.fileName = os.path.basename(file_path)
     r.attributes.attachment = as_attachment
     return r, h, len(data)
+
+
+def dedupe_resources(resources):
+    """按 bodyHash 对 resource 去重。
+
+    服务端在创建笔记时会按 bodyHash 自动合并「内容相同」的资源（同一哈希只保留一份），
+    因此即便我们为每个文件都上传了 resource，最终笔记里的资源数也可能少于文件数。
+    去重后所有 en-media 仍指向某个真实存在的资源哈希，附件均可正常下载，属正常现象。
+    """
+    seen, out = set(), []
+    for r in resources:
+        h = r.data.bodyHash
+        if h in seen:
+            continue
+        seen.add(h)
+        out.append(r)
+    return out
 
 
 def make_batches(items, budget=PER_NOTE_BUDGET):
@@ -411,7 +429,7 @@ def main():
             note = Note()
             note.title = title
             note.content = body
-            note.resources = resources
+            note.resources = dedupe_resources(resources)
             note.notebookGuid = nb_guid
             note.attributes = NoteAttributes()
             note.attributes.contentClass = CONTENT_CLASS_SUPERNOTE
@@ -439,7 +457,7 @@ def main():
                 note = Note()
                 note.title = title
                 note.content = body
-                note.resources = resources
+                note.resources = dedupe_resources(resources)
                 note.notebookGuid = nb_guid
                 note.attributes = NoteAttributes()
                 note.attributes.contentClass = CONTENT_CLASS_SUPERNOTE
@@ -450,27 +468,35 @@ def main():
                 failed.append((f"{ext}批{i}", f"{type(e).__name__}: {e}"))
                 print(f"  [附件 {ext}] 失败: {e}")
 
-    # 验证：重建的附件笔记必须 en-media 数 == 资源数（否则文件仍是孤儿资源、不显示）
+    # 验证：附件/图片笔记的每条 en-media 必须能解析到某个资源（hash 命中），
+    # 否则该附件变成孤儿引用、客户端不显示。
+    # 注意：服务端会按 bodyHash 自动去重「内容相同」的资源，因此「资源数」可能少于
+    # 「en-media 数」（同一文件被复制多份时）；但只要每个 en-media 的 hash 都能在资源
+    # 中找到，附件即可正常下载，属正常现象，不应判为异常。真问题只发生在 en-media 指向
+    # 了根本不存在的 hash（孤儿引用）。
     print("\n=== 附件笔记 en-media 引用核验 ===")
     bad = []
     for rec in manifest:
-        if not rec["type"].startswith("att-"):
+        if not (rec["type"].startswith("att-") or rec["type"] == "image"):
             continue
         try:
             n = client.note_store.getNote(rec["guid"], True, True, False, False)
-            rc = len(n.resources or [])
-            mc = (n.content or "").count("<en-media")
-            status = "OK" if mc == rc and rc > 0 else "BAD"
+            res_hashes = {binascii.hexlify(r.data.bodyHash).decode() for r in (n.resources or [])}
+            enmedia = re.findall(r'<en-media[^>]*\bhash="([0-9a-fA-F]+)"', n.content or "")
+            missing = [h for h in enmedia if h not in res_hashes]
+            rc, mc = len(res_hashes), len(enmedia)
+            status = "OK" if (not missing and rc > 0) else "BAD"
             if status == "BAD":
-                bad.append((rec["title"], rc, mc))
-            print(f"  [{status}] 《{rec['title']}》 资源={rc} en-media={mc}")
+                bad.append((rec["title"], rc, mc, missing[:3]))
+            extra = f"  缺失hash={missing[:3]}" if missing else ""
+            print(f"  [{status}] 《{rec['title']}》 资源={rc} en-media={mc}{extra}")
         except Exception as e:
-            bad.append((rec["title"], -1, -1))
+            bad.append((rec["title"], -1, -1, []))
             print(f"  [ERR] 《{rec['title']}》: {e}")
     if bad:
-        print(f"  !! {len(bad)} 条附件笔记引用异常，需排查。")
+        print(f"  !! {len(bad)} 条附件/图片笔记存在无法解析的 en-media（孤儿引用），需排查。")
     else:
-        print("  全部附件笔记引用正常 ✓")
+        print("  全部附件/图片笔记引用正常 ✓")
 
     with open(args.log, "w", encoding="utf-8") as fh:
         json.dump({"notebook": target.name if target else "默认", "note_count": created, "notes": manifest},
